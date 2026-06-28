@@ -1,0 +1,1279 @@
+openapi: 3.1.0
+info:
+  title: Leaderboard Service
+  version: 1.0.0
+  description: Multi-game leaderboard platform API
+  license:
+    name: ISC
+    identifier: ISC
+
+servers:
+  - url: /api/{apiVersion}
+    description: Versioned API base path
+    variables:
+      apiVersion:
+        default: v1
+        enum: [v1]
+
+tags:
+  - name: scores
+    description: Score submission endpoints
+  - name: rankings
+    description: Leaderboard read endpoints
+  - name: players
+    description: Authenticated player endpoints
+  - name: boards
+    description: Board discovery endpoints
+  - name: seasons
+    description: Season discovery endpoints
+  - name: system
+    description: Health and service metadata
+  - name: admin
+    description: Internal administrative endpoints
+  - name: internal
+    description: Internal maintenance jobs
+
+security:
+  - bearerAuth: []
+  - apiKeyAuth: []
+
+paths:
+  # ─── Scores ───────────────────────────────────────────────
+  /games/{gameId}/boards/{boardId}/scores:
+    post:
+      summary: Submit a score
+      operationId: submitScore
+      tags: [scores]
+      parameters:
+        - $ref: '#/components/parameters/gameId'
+        - $ref: '#/components/parameters/boardId'
+        - $ref: '#/components/parameters/idempotencyKey'
+        - $ref: '#/components/parameters/seasonId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScoreSubmission'
+      responses:
+        '201':
+          description: Score accepted
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-Trace-ID:
+              $ref: '#/components/headers/X-Trace-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScoreAcceptedResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/GameNotFound'
+        '409':
+          description: Idempotent request already processed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScoreAcceptedResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/AuthUnavailable'
+
+  /games/{gameId}/boards/{boardId}/scores/batch:
+    post:
+      summary: Submit multiple scores
+      operationId: submitScoresBatch
+      tags: [scores]
+      parameters:
+        - $ref: '#/components/parameters/gameId'
+        - $ref: '#/components/parameters/boardId'
+        - $ref: '#/components/parameters/seasonId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchScoreSubmission'
+      responses:
+        '201':
+          description: Scores processed
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-Trace-ID:
+              $ref: '#/components/headers/X-Trace-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchScoreResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/GameNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/AuthUnavailable'
+
+  # ─── Rankings ─────────────────────────────────────────────
+  /games/{gameId}/boards/{boardId}/top:
+    get:
+      summary: Get top players with cursor pagination
+      operationId: getTopPlayers
+      tags: [rankings]
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/gameId'
+        - $ref: '#/components/parameters/boardId'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/cursor'
+        - $ref: '#/components/parameters/seasonId'
+        - $ref: '#/components/parameters/filterCountry'
+        - $ref: '#/components/parameters/filterPlatform'
+        - $ref: '#/components/parameters/filterLeague'
+        - $ref: '#/components/parameters/ifNoneMatch'
+      responses:
+        '200':
+          description: Leaderboard entries
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedLeaderboardResponse'
+        '304':
+          description: Not modified
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/GameNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /games/{gameId}/boards/{boardId}/rank/{playerId}:
+    get:
+      summary: Get player rank and score
+      operationId: getPlayerRank
+      tags: [rankings]
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/gameId'
+        - $ref: '#/components/parameters/boardId'
+        - $ref: '#/components/parameters/seasonId'
+        - $ref: '#/components/parameters/playerId'
+      responses:
+        '200':
+          description: Player rank
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlayerRankResponse'
+        '404':
+          $ref: '#/components/responses/PlayerNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /games/{gameId}/boards/{boardId}/around/{playerId}:
+    get:
+      summary: Get players around a specific player
+      operationId: getAroundPlayer
+      tags: [rankings]
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/gameId'
+        - $ref: '#/components/parameters/boardId'
+        - $ref: '#/components/parameters/seasonId'
+        - $ref: '#/components/parameters/playerId'
+        - name: range
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 5
+          description: Number of players above and below
+      responses:
+        '200':
+          description: Players around target
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AroundPlayerResponse'
+        '404':
+          $ref: '#/components/responses/PlayerNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /games/{gameId}/boards/{boardId}/ranks:
+    post:
+      summary: Batch lookup ranks for multiple players
+      operationId: batchGetRanks
+      tags: [rankings]
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/gameId'
+        - $ref: '#/components/parameters/boardId'
+        - $ref: '#/components/parameters/seasonId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [playerIds]
+              properties:
+                playerIds:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  uniqueItems: true
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Batch rank results
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchRankResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/GameNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /games/{gameId}/boards/{boardId}/friends:
+    post:
+      summary: Get leaderboard scoped to a friend list
+      operationId: getFriendsLeaderboard
+      tags: [rankings]
+      parameters:
+        - $ref: '#/components/parameters/gameId'
+        - $ref: '#/components/parameters/boardId'
+        - $ref: '#/components/parameters/seasonId'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/cursor'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [playerIds]
+              properties:
+                playerIds:
+                  type: array
+                  minItems: 1
+                  maxItems: 200
+                  uniqueItems: true
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Friends leaderboard
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedLeaderboardResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/GameNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/AuthUnavailable'
+
+  # ─── Player ──────────────────────────────────────────────
+  /games/{gameId}/players/me:
+    get:
+      summary: Get authenticated player's ranks across all boards
+      operationId: getMyRanks
+      tags: [players]
+      parameters:
+        - $ref: '#/components/parameters/gameId'
+        - $ref: '#/components/parameters/seasonId'
+      responses:
+        '200':
+          description: Player ranks across boards
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlayerAllRanksResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/AuthUnavailable'
+
+  # ─── Boards ──────────────────────────────────────────────
+  /games/{gameId}/boards:
+    get:
+      summary: List available boards for a game
+      operationId: listBoards
+      tags: [boards]
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/gameId'
+      responses:
+        '200':
+          description: Board configurations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BoardListResponse'
+        '404':
+          $ref: '#/components/responses/GameNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ─── Seasons ─────────────────────────────────────────────
+  /games/{gameId}/seasons:
+    get:
+      summary: List seasons for a game
+      operationId: listSeasons
+      tags: [seasons]
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/gameId'
+      responses:
+        '200':
+          description: Season list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeasonListResponse'
+        '404':
+          $ref: '#/components/responses/GameNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ─── System ──────────────────────────────────────────────
+  /health:
+    servers:
+      - url: /
+    get:
+      summary: Health check
+      operationId: healthCheck
+      tags: [system]
+      security: []
+      responses:
+        '200':
+          $ref: '#/components/responses/HealthOk'
+
+  /ready:
+    servers:
+      - url: /
+    get:
+      summary: Readiness probe
+      operationId: readinessCheck
+      tags: [system]
+      security: []
+      responses:
+        '200':
+          $ref: '#/components/responses/HealthOk'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /live:
+    servers:
+      - url: /
+    get:
+      summary: Liveness probe
+      operationId: livenessCheck
+      tags: [system]
+      security: []
+      responses:
+        '200':
+          description: Alive
+
+  /version:
+    servers:
+      - url: /
+    get:
+      summary: Service version
+      operationId: getVersion
+      tags: [system]
+      security: []
+      responses:
+        '200':
+          description: Version info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionResponse'
+
+  # ─── Admin ───────────────────────────────────────────────
+  /admin/games/{gameId}/boards/{boardId}/reset:
+    post:
+      summary: Reset a board
+      operationId: adminResetBoard
+      tags: [admin]
+      security:
+        - internalServiceToken: []
+      parameters:
+        - $ref: '#/components/parameters/gameId'
+        - $ref: '#/components/parameters/boardId'
+        - $ref: '#/components/parameters/seasonId'
+      responses:
+        '200':
+          description: Board reset
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/games/{gameId}/boards/{boardId}/players/{playerId}:
+    delete:
+      summary: Remove a player's score (ban/invalidate)
+      operationId: adminDeleteScore
+      tags: [admin]
+      security:
+        - internalServiceToken: []
+      parameters:
+        - $ref: '#/components/parameters/gameId'
+        - $ref: '#/components/parameters/boardId'
+        - $ref: '#/components/parameters/seasonId'
+        - $ref: '#/components/parameters/playerId'
+        - $ref: '#/components/parameters/ifMatch'
+      responses:
+        '204':
+          description: Score deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '412':
+          description: Precondition failed (ETag mismatch)
+
+  /admin/games/{gameId}/boards/{boardId}/recalculate:
+    post:
+      summary: Recalculate board from Postgres
+      operationId: adminRecalculate
+      tags: [admin]
+      security:
+        - internalServiceToken: []
+      parameters:
+        - $ref: '#/components/parameters/gameId'
+        - $ref: '#/components/parameters/boardId'
+        - $ref: '#/components/parameters/seasonId'
+      responses:
+        '202':
+          description: Recalculation started
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/games/{gameId}/boards/{boardId}/freeze:
+    post:
+      summary: Freeze a board (reject new scores)
+      operationId: adminFreezeBoard
+      tags: [admin]
+      security:
+        - internalServiceToken: []
+      parameters:
+        - $ref: '#/components/parameters/gameId'
+        - $ref: '#/components/parameters/boardId'
+      responses:
+        '200':
+          description: Board frozen
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/games/{gameId}/boards/{boardId}/unfreeze:
+    post:
+      summary: Unfreeze a board
+      operationId: adminUnfreezeBoard
+      tags: [admin]
+      security:
+        - internalServiceToken: []
+      parameters:
+        - $ref: '#/components/parameters/gameId'
+        - $ref: '#/components/parameters/boardId'
+      responses:
+        '200':
+          description: Board unfrozen
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/games/{gameId}/seasons:
+    post:
+      summary: Create a new season
+      operationId: adminCreateSeason
+      tags: [admin]
+      security:
+        - internalServiceToken: []
+      parameters:
+        - $ref: '#/components/parameters/gameId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSeasonRequest'
+      responses:
+        '201':
+          description: Season created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Season'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/games/{gameId}/seasons/{seasonId}/end:
+    post:
+      summary: End a season and archive
+      operationId: adminEndSeason
+      tags: [admin]
+      security:
+        - internalServiceToken: []
+      parameters:
+        - $ref: '#/components/parameters/gameId'
+        - $ref: '#/components/parameters/seasonIdPath'
+      responses:
+        '200':
+          description: Season ended
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ─── Internal ────────────────────────────────────────────
+  /internal/leaderboards/cache/warm:
+    servers:
+      - url: /
+    post:
+      summary: Warm Redis cache from Postgres
+      operationId: internalWarmCache
+      tags: [internal]
+      security:
+        - internalServiceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [gameId, boardId]
+              properties:
+                gameId:
+                  type: string
+                boardId:
+                  type: string
+                seasonId:
+                  type: string
+      responses:
+        '202':
+          description: Warm-up started
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /internal/leaderboards/sync:
+    servers:
+      - url: /
+    post:
+      summary: Sync Redis with Postgres
+      operationId: internalSync
+      tags: [internal]
+      security:
+        - internalServiceToken: []
+      responses:
+        '202':
+          description: Sync started
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Bearer token verified via one of two methods depending on game config:
+        - **JWT** (local): Token is verified locally using the game's JWT secret or the global JWT_SECRET.
+        - **gRPC** (remote): Token is forwarded to the game's external auth service via gRPC
+          (`auth.AuthService/VerifyToken`). The proto definition is at `src/proto/auth.proto`.
+          Returns 503 if the auth service is unreachable.
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    internalServiceToken:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+
+  headers:
+    X-Request-ID:
+      schema:
+        type: string
+        format: uuid
+      description: Unique request identifier
+    X-Trace-ID:
+      schema:
+        type: string
+      description: Distributed trace identifier
+    ETag:
+      schema:
+        type: string
+      description: Entity tag for caching
+    RateLimit-Limit:
+      schema:
+        type: integer
+    RateLimit-Remaining:
+      schema:
+        type: integer
+    Retry-After:
+      schema:
+        type: integer
+
+  parameters:
+    gameId:
+      name: gameId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Game identifier from config
+    boardId:
+      name: boardId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Board identifier, validated against game config
+    playerId:
+      name: playerId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+      description: Player identifier
+    seasonId:
+      name: seasonId
+      in: query
+      schema:
+        type: string
+      description: Season identifier. Omit for current season.
+    seasonIdPath:
+      name: seasonId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Season identifier
+    limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      description: Entries per page
+    cursor:
+      name: cursor
+      in: query
+      schema:
+        type: string
+      description: Opaque cursor for next page. Omit for first page.
+    idempotencyKey:
+      name: Idempotency-Key
+      in: header
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+      description: Prevents duplicate score processing on retries
+    ifNoneMatch:
+      name: If-None-Match
+      in: header
+      schema:
+        type: string
+      description: ETag from previous response for caching
+    ifMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema:
+        type: string
+      description: ETag for optimistic concurrency on admin writes
+    filterCountry:
+      name: country
+      in: query
+      schema:
+        type: string
+        minLength: 2
+        maxLength: 2
+        pattern: '^[A-Z]{2}$'
+      description: ISO 3166-1 alpha-2 country code filter
+    filterPlatform:
+      name: platform
+      in: query
+      schema:
+        type: string
+        enum: [ios, android, web, pc, console]
+      description: Platform filter
+    filterLeague:
+      name: league
+      in: query
+      schema:
+        type: string
+      description: League/tier filter
+
+  schemas:
+    # ─── Requests ────────────────────────────────────────────
+    ScoreSubmission:
+      type: object
+      required: [score]
+      properties:
+        score:
+          type: number
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Game-specific metadata (device, region, mode, etc.)
+
+    BatchScoreSubmission:
+      type: object
+      required: [scores]
+      properties:
+        scores:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: object
+            required: [playerId, score]
+            properties:
+              playerId:
+                type: string
+              score:
+                type: number
+              metadata:
+                type: object
+                additionalProperties: true
+
+    CreateSeasonRequest:
+      type: object
+      required: [id, startsAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+
+    # ─── Responses ───────────────────────────────────────────
+    ScoreAcceptedResponse:
+      type: object
+      required: [status, code, message, data, meta]
+      properties:
+        status:
+          type: string
+          enum: [success]
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          required: [accepted, rank, score, submittedAt]
+          properties:
+            accepted:
+              type: boolean
+            rank:
+              type: integer
+              minimum: 1
+            previousRank:
+              type: integer
+              minimum: 1
+            score:
+              type: number
+            bestScore:
+              type: number
+            newPersonalBest:
+              type: boolean
+            submittedAt:
+              type: string
+              format: date-time
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    BatchScoreResponse:
+      type: object
+      required: [status, code, message, data, meta]
+      properties:
+        status:
+          type: string
+          enum: [success]
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          required: [submitted, failed, results]
+          properties:
+            submitted:
+              type: integer
+              minimum: 0
+            failed:
+              type: integer
+              minimum: 0
+            results:
+              type: array
+              items:
+                $ref: '#/components/schemas/BatchScoreResult'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    BatchScoreResult:
+      type: object
+      required: [playerId, accepted]
+      properties:
+        playerId:
+          type: string
+        accepted:
+          type: boolean
+        rank:
+          type: integer
+          minimum: 1
+        score:
+          type: number
+        error:
+          $ref: '#/components/schemas/ApiError'
+
+    LeaderboardEntry:
+      type: object
+      required: [playerId, score, rank]
+      properties:
+        playerId:
+          type: string
+        score:
+          type: number
+        rank:
+          type: integer
+          minimum: 1
+
+    PaginatedLeaderboardResponse:
+      type: object
+      required: [status, code, message, data, meta]
+      properties:
+        status:
+          type: string
+          enum: [success]
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaderboardEntry'
+        meta:
+          allOf:
+            - $ref: '#/components/schemas/ResponseMeta'
+            - type: object
+              properties:
+                total:
+                  type: integer
+                  minimum: 0
+                cursor:
+                  type: string
+                hasMore:
+                  type: boolean
+                boardVersion:
+                  type: integer
+
+    PlayerRankResponse:
+      type: object
+      required: [status, code, message, data, meta]
+      properties:
+        status:
+          type: string
+          enum: [success]
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          required: [playerId, rank, score]
+          properties:
+            playerId:
+              type: string
+            rank:
+              type: integer
+              minimum: 1
+            score:
+              type: number
+            total:
+              type: integer
+              minimum: 0
+            percentile:
+              type: number
+              minimum: 0
+              maximum: 100
+              description: Top X%
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    AroundPlayerResponse:
+      type: object
+      required: [status, code, message, data, meta]
+      properties:
+        status:
+          type: string
+          enum: [success]
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          required: [above, player, below]
+          properties:
+            above:
+              type: array
+              items:
+                $ref: '#/components/schemas/LeaderboardEntry'
+            player:
+              $ref: '#/components/schemas/LeaderboardEntry'
+            below:
+              type: array
+              items:
+                $ref: '#/components/schemas/LeaderboardEntry'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    BatchRankResponse:
+      type: object
+      required: [status, code, message, data, meta]
+      properties:
+        status:
+          type: string
+          enum: [success]
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            type: object
+            required: [playerId, found]
+            properties:
+              playerId:
+                type: string
+              rank:
+                type: integer
+                minimum: 1
+              score:
+                type: number
+              found:
+                type: boolean
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    PlayerAllRanksResponse:
+      type: object
+      required: [status, code, message, data, meta]
+      properties:
+        status:
+          type: string
+          enum: [success]
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          required: [playerId, boards]
+          properties:
+            playerId:
+              type: string
+            boards:
+              type: array
+              items:
+                type: object
+                required: [boardId, rank, score]
+                properties:
+                  boardId:
+                    type: string
+                  rank:
+                    type: integer
+                    minimum: 1
+                  score:
+                    type: number
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    BoardListResponse:
+      type: object
+      required: [status, code, message, data, meta]
+      properties:
+        status:
+          type: string
+          enum: [success]
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            type: object
+            required: [id, strategy]
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              strategy:
+                type: string
+                enum: [highest, lowest, increment, replace]
+              resetInterval:
+                type: string
+                description: 'e.g. 24h, 7d, 30d, never'
+              playerCount:
+                type: integer
+              frozen:
+                type: boolean
+
+    SeasonListResponse:
+      type: object
+      required: [status, code, message, data, meta]
+      properties:
+        status:
+          type: string
+          enum: [success]
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Season'
+
+    Season:
+      type: object
+      required: [id, status, startsAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [upcoming, active, ended, archived]
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+
+    # ─── Common ──────────────────────────────────────────────
+    ResponseMeta:
+      type: object
+      required: [requestId, generatedAt]
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        traceId:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+
+    SuccessEnvelope:
+      type: object
+      required: [status, code, message, data, meta]
+      description: Standard success response wrapper
+      properties:
+        status:
+          type: string
+          enum: [success]
+        code:
+          type: integer
+          description: HTTP status code
+        message:
+          type: string
+        data:
+          description: Response payload
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    ErrorEnvelope:
+      type: object
+      required: [status, code, message, error, meta]
+      description: Standard error response wrapper
+      properties:
+        status:
+          type: string
+          enum: [error]
+        code:
+          type: integer
+          description: HTTP status code
+        message:
+          type: string
+        error:
+          $ref: '#/components/schemas/ApiError'
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+
+    ApiError:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code (e.g. PLAYER_NOT_FOUND)
+        details:
+          type: object
+          additionalProperties: true
+
+    VersionResponse:
+      type: object
+      required: [version]
+      properties:
+        version:
+          type: string
+        commit:
+          type: string
+        builtAt:
+          type: string
+          format: date-time
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    GameNotFound:
+      description: Game not registered in config
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    PlayerNotFound:
+      description: Player not found on this board
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ServiceUnavailable:
+      description: Service unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    AuthUnavailable:
+      description: Authentication service unreachable (gRPC auth only)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    RateLimited:
+      description: Too many requests
+      headers:
+        RateLimit-Limit:
+          $ref: '#/components/headers/RateLimit-Limit'
+        RateLimit-Remaining:
+          $ref: '#/components/headers/RateLimit-Remaining'
+        Retry-After:
+          $ref: '#/components/headers/Retry-After'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    HealthOk:
+      description: Service healthy
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [status]
+            properties:
+              status:
+                type: string
+                enum: [ok, degraded]
+              redis:
+                type: string
+                enum: [connected, disconnected]
+              db:
+                type: string
+                enum: [connected, disconnected]
+              uptime:
+                type: number
+                minimum: 0

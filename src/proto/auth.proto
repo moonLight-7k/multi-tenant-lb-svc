@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package auth;
+
+service AuthService {
+  rpc VerifyToken(VerifyTokenRequest) returns (VerifyTokenResponse);
+}
+
+message VerifyTokenRequest {
+  string token = 1;
+  string game_id = 2;
+}
+
+message VerifyTokenResponse {
+  bool valid = 1;
+  string player_id = 2; // populated when valid=true
+  string error = 3;     // populated when valid=false
+}
