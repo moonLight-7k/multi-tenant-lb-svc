@@ -22,8 +22,11 @@ export function validate(schemas: ValidateOptions) {
       if (!result.success) {
         errors.push({ target, issues: result.error.issues });
       } else {
-        // Replace with parsed (coerced/transformed) values
-        (req as any)[target] = result.data;
+        // Express 5 makes req.query a getter — use Object.defineProperty to override
+        Object.defineProperty(req, target, {
+          value: result.data,
+          writable: true,
+        });
       }
     }
 

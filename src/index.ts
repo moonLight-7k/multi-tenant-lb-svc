@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/node";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -106,7 +107,7 @@ app.get(LIVE_PATH, (_req, res) => {
 
 app.get(VERSION_PATH, (_req, res) => {
   res.json({
-    version: env.NPM_PACKAGE_VERSION,
+    version: env.BUILD_VERSION,
     commit: env.GIT_COMMIT,
     builtAt: env.BUILD_TIME,
   });
@@ -115,5 +116,29 @@ app.get(VERSION_PATH, (_req, res) => {
 if (!env.SERVICE_TOKEN) {
   logger.warn("SERVICE_TOKEN not set — admin API will reject all requests");
 }
+
+// Sentry error handler — must be after all routes
+Sentry.setupExpressErrorHandler(app);
+
+// Final error handler — JSON response instead of Express default HTML
+app.use(
+  (
+    err: Error & { status?: number; statusCode?: number },
+    req: express.Request,
+    res: express.Response,
+    _next: express.NextFunction,
+  ) => {
+    const status = err.status || err.statusCode || 500;
+    res.status(status).json({
+      status: "error",
+      code: status,
+      message: err.message || "Internal Server Error",
+      meta: {
+        requestId: req.requestId,
+        traceId: req.traceId,
+      },
+    });
+  },
+);
 
 export { app, env };

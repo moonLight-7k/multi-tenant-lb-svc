@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { createHash } from "node:crypto";
 import { sendSuccess, sendError } from "@/utils/response";
-import * as leaderboard from "@/lib/leaderboard";
+import * as leaderboard from "@/lib";
 
 export async function resetBoard(req: Request, res: Response) {
   const { gameId, boardId } = req.params as Record<string, string>;

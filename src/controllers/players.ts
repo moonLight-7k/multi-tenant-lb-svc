@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { sendSuccess, sendError } from "@/utils/response";
-import * as leaderboard from "@/lib/leaderboard";
+import * as leaderboard from "@/lib";
 
 export async function getPlayerBoards(req: Request, res: Response) {
   const { gameId } = req.params as Record<string, string>;

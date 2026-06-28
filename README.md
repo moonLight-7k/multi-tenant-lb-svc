@@ -143,6 +143,62 @@ pnpm format             # prettier
 pnpm format:check       # prettier --check
 ```
 
+## Load testing
+
+Load tests use [k6](https://grafana.com/docs/k6/latest/). Install it first:
+
+```bash
+# macOS
+brew install k6
+
+# linux (Debian/Ubuntu)
+sudo gpg -k && sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D68 && echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list && sudo apt-get update && sudo apt-get install k6
+
+# docker
+docker run --rm -i grafana/k6 run - <k6/loadtest.js
+```
+
+### Running
+
+```bash
+# default: 50 RPS against localhost for 1 minute
+k6 run k6/loadtest.js
+
+# custom target and rate
+k6 run -e BASE_URL=https://leaderboard.example.com/api/v1 -e RPS=200 k6/loadtest.js
+
+# override duration, game, boards, player pool
+k6 run -e DURATION=5m -e GAME_ID=chess -e BOARDS=daily,alltime -e PLAYER_COUNT=1000 k6/loadtest.js
+```
+
+### Environment variables
+
+| Variable       | Default                          | Description                                 |
+| -------------- | -------------------------------- | ------------------------------------------- |
+| `BASE_URL`     | `http://localhost:3000/api/v1`   | API base URL                                |
+| `API_KEY`      | `test-api-key`                   | `X-API-Key` for authenticated endpoints     |
+| `GAME_ID`      | `chess`                          | Game to test against                        |
+| `BOARDS`       | `daily,weekly,monthly,alltime`   | Comma-separated board IDs                   |
+| `PLAYER_COUNT` | `500`                            | Size of the simulated player pool           |
+| `RPS`          | `50`                             | Target requests per second (split 60/40 between random ops and user journeys) |
+| `DURATION`     | `1m`                             | Test duration                               |
+
+### What it tests
+
+The load test runs two concurrent scenarios:
+
+- **Random ops (60% of RPS)** — weighted random endpoint calls: score submissions, top player queries, rank lookups, around-player views, batch rank fetches, friends leaderboards, and paginated browsing.
+- **User journeys (40% of RPS)** — chained requests simulating a real player session: submit score → check rank → ETag conditional re-fetch → view surrounding players → browse top with cursor pagination.
+
+Features exercised: gzip compression, ETag/304 caching, idempotency keys on score submissions, cursor pagination, multi-board distribution.
+
+### Thresholds
+
+The test fails if:
+- p95 response time exceeds 500ms
+- p99 response time exceeds 1000ms
+- More than 5% of requests fail
+
 ## License
 
 ISC

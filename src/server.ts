@@ -1,3 +1,4 @@
+import "./instrument.js";
 import { app, env } from "@/index";
 import { logger } from "@/utils/logger";
 

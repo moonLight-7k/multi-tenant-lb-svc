@@ -18,5 +18,8 @@ export const logger = winston.createLogger({
           ? combine(timestamp({ format: "ISO" }), json())
           : combine(colorize(), simple()),
     }),
+    ...(env.NODE_ENV !== "production"
+      ? [new winston.transports.File({ filename: "logs/dev.log" })]
+      : []),
   ],
 });

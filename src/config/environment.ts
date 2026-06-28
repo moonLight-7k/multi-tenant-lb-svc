@@ -21,8 +21,14 @@ export const env = {
   CHESS_JWT_SECRET: process.env.CHESS_JWT_SECRET,
   POKER_GRPC_URL: process.env.POKER_GRPC_URL,
 
-  // Build metadata
-  NPM_PACKAGE_VERSION: process.env.npm_package_version || "0.0.0",
+  // Observability
+  SENTRY_DSN: process.env.SENTRY_DSN,
+  SENTRY_TRACES_SAMPLE_RATE: parseFloat(
+    process.env.SENTRY_TRACES_SAMPLE_RATE || "1.0",
+  ),
+
+  // Build metadata — baked by esbuild define, env fallback for dev (tsx)
+  BUILD_VERSION: process.env.BUILD_VERSION || "0.0.0-dev",
   GIT_COMMIT: process.env.GIT_COMMIT || "unknown",
   BUILD_TIME: process.env.BUILD_TIME || "unknown",
 

@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { createHash } from "node:crypto";
 import { sendSuccess, sendError } from "@/utils/response";
-import * as leaderboard from "@/lib/leaderboard";
+import * as leaderboard from "@/lib";
 
 function etag(req: Request, res: Response, data: unknown): boolean {
   const hash = `"${createHash("md5").update(JSON.stringify(data)).digest("hex")}"`; // ponytail: md5 is fine for etag, not security
